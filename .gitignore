@@ -1,0 +1,17 @@
+terraform/.terraform
+
+terraform/*.tfstate
+
+terraform/*.tfstate.*
+
+terraform/.terraform.lock.hcl
+
+terraform/*.tfplan
+
+terraform/*.log
+
+terraform/*.tfvars
+
+terraform/*.tfvars.json
+
+terraform/providers/
