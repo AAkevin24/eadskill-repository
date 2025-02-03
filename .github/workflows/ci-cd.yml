@@ -15,15 +15,42 @@ env:
 
 jobs:
   build-and-push:
+
+    
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
+      - name: Instalar AWS CLI (para execução local no ACT)
+        if: ${{ env.ACT }} 
+        run: |
+          apt-get update && apt-get install -y awscli  
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1 
 
-      - name: Autenticar no AWS ECR
+      - name: Criar repositório ECR Backend 
+        run: |
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY_BACKEND || \
+          aws ecr create-repository --repository-name $ECR_REPOSITORY_BACKEND
+
+      - name: Criar repositório ECR Populate
+        run: |
+            aws ecr describe-repositories --repository-names $ECR_REPOSITORY_POPULATE || \
+            aws ecr create-repository --repository-name $ECR_REPOSITORY_POPULATE
+            
+      - name: Authenticate in AWS ECR
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Obter URL do ECR Backend
+        run: |
+          echo "BACKEND_IMAGE_URL=$(aws ecr describe-repositories --repository-names $ECR_REPOSITORY_BACKEND --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_ENV  
 
       - name: Build and push docker image from Backend
         run: |
@@ -31,6 +58,8 @@ jobs:
           docker tag $ECR_REPOSITORY_BACKEND:latest $(aws ecr get-login-password --region $AWS_REGION):latest
           docker push $(aws ecr get-login-password --region $AWS_REGION):latest
           echo "BACKEND_IMAGE_URL=$BACKEND_IMAGE_URL:latest" >> $GITHUB_ENV
+          echo "BACKEND_IMAGE_URL=$REPO_URI:latest" >> $GITHUB_OUTPUT
+
 
       - name: Build and push docker image from Populate
         run: |
@@ -38,13 +67,27 @@ jobs:
           docker tag $ECR_REPOSITORY_POPULATE:latest $(aws ecr get-login-password --region $AWS_REGION):latest
           docker push $(aws ecr get-login-password --region $AWS_REGION):latest
           echo "POPULATE_IMAGE_URL=$POPULATE_IMAGE_URL:latest" >> $GITHUB_ENV
+          echo "POPULATE_IMAGE_URL=$REPO_URI:latest" >> $GITHUB_OUTPUT
+
 
   apply-terraform:
     name: Apply Terraform
     runs-on: ubuntu-latest
     needs: build-and-push
 
+    env:
+      BACKEND_IMAGE_URL: ${{ needs.build-and-push.outputs.backend_image_url }}
+      POPULATE_IMAGE_URL: ${{ needs.build-and-push.outputs.populate_image_url }}
+
     steps:
+      - name: Instalar Terraform 
+        if: ${{ env.ACT }} # Garante que roda apenas no ACT
+        run: |
+          apt-get update && apt-get install -y wget unzip
+          wget https://releases.hashicorp.com/terraform/1.10.5/terraform_1.10.5_linux_amd64.zip
+          unzip terraform_1.10.5_linux_amd64.zip
+          mv terraform /usr/local/bin/
+          terraform version
       - name: Code checkout
         uses: actions/checkout@v4
 
@@ -53,15 +96,14 @@ jobs:
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: $AWS_REGION
-
+          aws-region: us-east-1
       - name: Apply Terraform
         run: |
           cd terraform
           terraform init
           terraform apply -auto-approve
-          -var="image_url_backend=    ${{ env.BACKEND_IMAGE_URL }}" \
-          -var="image_url_populate=   ${{ env.POPULATE_IMAGE_URL }}"
+            -var="image_url_backend=    ${{ env.BACKEND_IMAGE_URL }}" \
+            -var="image_url_populate=   ${{ env.POPULATE_IMAGE_URL }}"
 
   deploy:
     name: Deploy Application
@@ -74,7 +116,7 @@ jobs:
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: $AWS_REGION
+          aws-region: us-east-1
 
       - name: Update services in ECS 
         run: |
