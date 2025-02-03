@@ -16,7 +16,7 @@ devops-store-application/backend/ - Código do backend da aplicação
 
 devops-store-application/populate/ - Serviço de população de dados
 
-Execução do Pipeline de CI/CD
+# Execução do Pipeline de CI/CD
 1) Crie um arquivo .secrets na raiz e adicione os seguintes segredos:
 
 AWS_ACCESS_KEY_ID=Chave de acesso AWS
@@ -25,13 +25,13 @@ AWS_SECRET_ACCESS_KEY=Chave secreta da AWS
 2) Rodando Localmente com ACT
 
 brew install act  # Para macOS
-# Ou
+Ou
 sudo apt install act  # Para Linux
 
-# Rodar o pipeline simulando a branch main
+Rodar o pipeline simulando a branch main
 ACT=true act --secret-file .secrets
 
-3) Script Backup do PostgreSQL
+# Script Backup do PostgreSQL
 
 Edite o arquivo backup.go e configure as variáveis:
 AWS_REGION="us-east-1"
